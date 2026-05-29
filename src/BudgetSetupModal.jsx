@@ -2,22 +2,22 @@ import { useState } from 'react'
 import { doc, setDoc } from 'firebase/firestore'
 import { db } from './firebase'
 import { CATEGORIES, DEFAULT_ALLOCATIONS, fmt, HOUSEHOLD } from './constants'
-
+ 
 export default function BudgetSetupModal({ month, salary: initSalary, allocations: initAlloc, onClose, onSaved }) {
   const [salary, setSalary] = useState(initSalary || '')
   const [alloc, setAlloc] = useState(() => ({ ...DEFAULT_ALLOCATIONS, ...initAlloc }))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
+ 
   const totalPct = Object.values(alloc).reduce((s, v) => s + (Number(v) || 0), 0)
   const remaining = 100 - totalPct
   const sal = Number(salary) || 0
-
+ 
   const set = (id, val) => {
     const n = Math.max(0, Math.min(100, Number(val) || 0))
     setAlloc(prev => ({ ...prev, [id]: n }))
   }
-
+ 
   const handleSave = async () => {
     if (!salary || Number(salary) <= 0) { setError('Enter a valid salary.'); return }
     if (totalPct > 100) { setError(`Total is ${totalPct}% — must be 100% or less.`); return }
@@ -30,7 +30,7 @@ export default function BudgetSetupModal({ month, salary: initSalary, allocation
     } catch { setError('Failed to save.') }
     finally { setLoading(false) }
   }
-
+ 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 560 }}>
@@ -38,7 +38,7 @@ export default function BudgetSetupModal({ month, salary: initSalary, allocation
           <h2>⚙️ Budget Setup</h2>
           <button className="btn-icon" onClick={onClose}>✕</button>
         </div>
-
+ 
         <div className="modal-body">
           <div className="field">
             <label>Monthly Salary / Income (₹)</label>
@@ -48,7 +48,7 @@ export default function BudgetSetupModal({ month, salary: initSalary, allocation
               style={{ fontSize: '1.4rem', textAlign: 'center' }}
             />
           </div>
-
+ 
           {/* Summary bar */}
           <div style={styles.summaryBar}>
             <div>
@@ -72,7 +72,7 @@ export default function BudgetSetupModal({ month, salary: initSalary, allocation
               </div>
             </div>
           </div>
-
+ 
           {/* Category rows */}
           {CATEGORIES.map(cat => {
             const pctVal = alloc[cat.id] || 0
@@ -103,10 +103,10 @@ export default function BudgetSetupModal({ month, salary: initSalary, allocation
               </div>
             )
           })}
-
+ 
           {error && <div className="error-box">{error}</div>}
         </div>
-
+ 
         <div className="modal-footer">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn-primary" onClick={handleSave} disabled={loading}>
@@ -117,7 +117,7 @@ export default function BudgetSetupModal({ month, salary: initSalary, allocation
     </div>
   )
 }
-
+ 
 const styles = {
   summaryBar: {
     display: 'flex', alignItems: 'center', gap: 12,
@@ -135,3 +135,4 @@ const styles = {
     border: '1px solid var(--border)',
   },
 }
+ 
