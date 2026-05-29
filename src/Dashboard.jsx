@@ -197,7 +197,7 @@ export default function Dashboard({ user }) {
       {breakdown && (
         <CategoryBreakdown categoryId={breakdown} expenses={expenses}
           budget={salary * (allocations[breakdown] || 0) / 100}
-          onClose={() => setBreakdown(null)} onEdit={openEdit} onRefresh={loadData} />
+          onClose={() => setBreakdown(null)} onEdit={openEdit} onRefresh={loadData} month={month} />
       )}
     </div>
   )

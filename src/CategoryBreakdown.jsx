@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { deleteDoc, doc } from 'firebase/firestore'
 import { db } from './firebase'
-import { getCat, fmt, statusColor, pct, formatDate, HOUSEHOLD, classifyNote, SUB_CATEGORY_RULES } from './constants'
+import { getCat, fmt, statusColor, pct, formatDate, HOUSEHOLD, classifyNote, SUB_CATEGORY_RULES, downloadCSV } from './constants'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
- 
-export default function CategoryBreakdown({ categoryId, expenses, budget, onClose, onEdit, onRefresh }) {
+
+export default function CategoryBreakdown({ categoryId, expenses, budget, onClose, onEdit, onRefresh, month }) {
   const cat = getCat(categoryId)
   const [deleting, setDeleting] = useState(null)
   const [view, setView] = useState('grouped') // 'grouped' | 'list'
@@ -67,7 +67,35 @@ export default function CategoryBreakdown({ categoryId, expenses, budget, onClos
  
   const color = statusColor(total, budget)
   const pctUsed = pct(total, budget)
- 
+
+  // Calculate insights
+  const avgExpense = catExp.length > 0 ? total / catExp.length : 0
+  const maxExpense = catExp.length > 0 ? Math.max(...catExp.map(e => e.amount)) : 0
+  const mostFrequentType = subCatArr.length > 0 ? subCatArr[0].label : null
+  const insights = []
+
+  if (budget > 0) {
+    const remaining = budget - total
+    if (remaining < 0) {
+      insights.push({ icon: '🚨', text: `Over budget by ${fmt(Math.abs(remaining))}` })
+    } else if (remaining < budget * 0.1) {
+      insights.push({ icon: '⚠️', text: `Only ${fmt(remaining)} left for this category` })
+    } else {
+      insights.push({ icon: '✅', text: `${fmt(remaining)} remaining in budget` })
+    }
+  }
+
+  if (mostFrequentType) {
+    insights.push({ icon: '🎯', text: `Most spending on ${mostFrequentType.toLowerCase()}` })
+  }
+
+  insights.push({ icon: '📊', text: `Avg expense: ${fmt(avgExpense)}, Highest: ${fmt(maxExpense)}` })
+
+  const handleDownloadCategory = () => {
+    const catExpenses = catExp.sort((a, b) => (b.date?.seconds || 0) - (a.date?.seconds || 0))
+    downloadCSV(catExpenses, `${month}-${cat.label}`)
+  }
+
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 600 }}>
@@ -88,6 +116,32 @@ export default function CategoryBreakdown({ categoryId, expenses, budget, onClos
         </div>
  
         <div className="modal-body">
+          {/* Download Button */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={handleDownloadCategory}
+              disabled={catExp.length === 0}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--blue-dim)', border: '1px solid rgba(59,130,246,0.25)', color: 'var(--blue)', borderRadius: 8, padding: '8px 14px', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', opacity: catExp.length === 0 ? 0.4 : 1 }}
+            >
+              ⬇️ Download
+            </button>
+          </div>
+
+          {/* Insights */}
+          {insights.length > 0 && (
+            <div className="card" style={{ background: `linear-gradient(135deg, rgba(${cat.color.substring(1).match(/.{1,2}/g).map(x => parseInt(x, 16)).join(', ')}, 0.05) 0%, var(--bg-card) 100%)` }}>
+              <div style={s.cardTitle}>💡 Insights</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+                {insights.map((ins, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 10px', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <span style={{ fontSize: '1rem', flexShrink: 0 }}>{ins.icon}</span>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text)', lineHeight: 1.4 }}>{ins.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Stats */}
           <div style={s.statsRow}>
             <div style={s.statBox}>

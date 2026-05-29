@@ -3,6 +3,13 @@ import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/fi
 import { db } from './firebase'
 import { CATEGORIES, getCat, HOUSEHOLD } from './constants'
  
+const getLocalDateString = (d) => {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export default function AddExpenseModal({ month, onClose, onSaved, editExpense }) {
   const editing = !!editExpense
   const [category, setCategory] = useState(editExpense?.category || 'food')
@@ -10,8 +17,8 @@ export default function AddExpenseModal({ month, onClose, onSaved, editExpense }
   const [note, setNote] = useState(editExpense?.note || '')
   const [date, setDate] = useState(
     editExpense?.date
-      ? new Date(editExpense.date.seconds * 1000).toISOString().slice(0, 10)
-      : new Date().toISOString().slice(0, 10)
+      ? getLocalDateString(new Date(editExpense.date.seconds * 1000))
+      : getLocalDateString(new Date())
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -23,7 +30,8 @@ export default function AddExpenseModal({ month, onClose, onSaved, editExpense }
     if (!note.trim()) { setError('Add a note — e.g. Breakfast, Petrol fill-up'); return }
     setError(''); setLoading(true)
     try {
-      const expDate = new Date(date + 'T12:00:00')
+      const [y, m, d] = date.split('-').map(Number)
+      const expDate = new Date(y, m - 1, d)
       const payload = { category, amount: parseFloat(amount), note: note.trim(), date: expDate, month, updatedAt: serverTimestamp() }
       if (editing) {
         await updateDoc(doc(db, 'household', HOUSEHOLD, 'expenses', editExpense.id), payload)

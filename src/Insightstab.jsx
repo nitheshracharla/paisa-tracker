@@ -127,6 +127,13 @@ export default function InsightsTab({ month, salary, expenses, spentBy, allocati
       const diff = totalSpent - prevSpent
       insights.push({ icon: diff > 0 ? '↑' : '↓', text: `${Math.abs(Math.round((diff / prevSpent) * 100))}% ${diff > 0 ? 'more' : 'less'} spend vs last month (${fmt(Math.abs(diff))})` })
     }
+
+    // Category-specific insights
+    const topSpendingCat = topCats[0]
+    if (topSpendingCat) {
+      const pct = Math.round((topSpendingCat.spent / salary) * 100)
+      insights.push({ icon: '🎯', text: `${topSpendingCat.label} is your top expense at ${pct}% of income (${fmt(topSpendingCat.spent)})` })
+    }
   }
  
   return (
@@ -217,25 +224,32 @@ export default function InsightsTab({ month, salary, expenses, spentBy, allocati
         </div>
       </div>
  
-      {/* Sub-category breakdown */}
+      {/* Sub-category breakdown with insights */}
       {topSubCats.length > 0 && (
         <div className="card">
-          <div style={s.cardTitle}>What You Spend On (Sub-categories)</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+          <div style={s.cardTitle}>Detailed Breakdown (Where You Spend)</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
             {topSubCats.map(([key, total], i) => {
               const pctOfTotal = totalSpent > 0 ? Math.round((total / totalSpent) * 100) : 0
+              const itemsInThis = expenses.filter(e => {
+                const sub = classifyNote(e.note, e.category)
+                return sub && `${getCat(e.category).label} › ${sub}` === key
+              })
               return (
-                <div key={i} style={s.subCatRow}>
+                <div key={i} style={{ ...s.subCatRow, borderLeft: `3px solid hsl(${200 + i * 25}, 70%, 55%)` }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>{key}</span>
-                      <span className="amount" style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)' }}>{fmt(total)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>{key}</span>
+                      <span className="amount" style={{ fontSize: '0.82rem', fontWeight: 600 }}>{fmt(total)}</span>
                     </div>
                     <div className="progress-track">
                       <div className="progress-fill" style={{ width: `${pctOfTotal * 3}%`, background: `hsl(${200 + i * 25}, 70%, 55%)` }} />
                     </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                      <span>{itemsInThis.length}× expense{itemsInThis.length !== 1 ? 's' : ''}</span>
+                      <span>{pctOfTotal}% of total</span>
+                    </div>
                   </div>
-                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', flexShrink: 0, marginLeft: 8 }}>{pctOfTotal}%</span>
                 </div>
               )
             })}
