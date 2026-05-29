@@ -183,4 +183,3 @@ export const downloadCSV = (expenses, month) => {
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
- 
