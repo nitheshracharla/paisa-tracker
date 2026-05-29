@@ -15,26 +15,13 @@ export const CATEGORIES = [
 ]
 
 export const DEFAULT_ALLOCATIONS = {
-  rent: 25,
-  emi: 15,
-  food: 15,
-  travel: 5,
-  fuel: 5,
-  savings: 10,
-  utility: 5,
-  healthcare: 3,
-  entertainment: 3,
-  shopping: 5,
-  subscriptions: 2,
-  education: 2,
-  miscellaneous: 5,
+  rent: 25, emi: 15, food: 15, travel: 5, fuel: 5, savings: 10,
+  utility: 5, healthcare: 3, entertainment: 3, shopping: 5,
+  subscriptions: 2, education: 2, miscellaneous: 5,
 }
 
 export const fmt = (n) =>
   '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })
-
-export const fmtFull = (n) =>
-  '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export const pct = (spent, budget) => {
   if (!budget) return 0
@@ -43,9 +30,9 @@ export const pct = (spent, budget) => {
 
 export const statusColor = (spent, budget) => {
   if (!budget) return 'var(--text-muted)'
-  const ratio = spent / budget
-  if (ratio >= 1) return 'var(--rose)'
-  if (ratio >= 0.8) return 'var(--amber)'
+  const r = spent / budget
+  if (r >= 1) return 'var(--rose)'
+  if (r >= 0.8) return 'var(--amber)'
   return 'var(--green)'
 }
 
@@ -61,14 +48,22 @@ export const monthLabel = (key) => {
 
 export const prevMonth = (key) => {
   const [y, m] = key.split('-').map(Number)
-  const d = new Date(y, m - 2, 1)
-  return monthKey(d)
+  return monthKey(new Date(y, m - 2, 1))
 }
 
 export const nextMonth = (key) => {
   const [y, m] = key.split('-').map(Number)
-  const d = new Date(y, m, 1)
-  return monthKey(d)
+  return monthKey(new Date(y, m, 1))
 }
 
 export const getCat = (id) => CATEGORIES.find(c => c.id === id) || CATEGORIES[CATEGORIES.length - 1]
+
+export const formatDate = (ts) => {
+  try {
+    const d = ts?.seconds ? new Date(ts.seconds * 1000) : new Date(ts)
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  } catch { return '' }
+}
+
+// Shared household path — both users read/write the same data
+export const HOUSEHOLD = 'main'
