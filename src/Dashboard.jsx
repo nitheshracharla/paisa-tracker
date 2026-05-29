@@ -3,13 +3,21 @@ import { signOut } from 'firebase/auth'
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import {
-  CATEGORIES, DEFAULT_ALLOCATIONS, fmt, fmtFull, pct, statusColor,
-  monthKey, monthLabel, prevMonth, nextMonth, getCat
+  CATEGORIES, DEFAULT_ALLOCATIONS, fmt, pct, statusColor,
+  monthKey, monthLabel, prevMonth, nextMonth, getCat, formatDate, HOUSEHOLD
 } from './constants'
 import AddExpenseModal from './AddExpenseModal'
 import BudgetSetupModal from './BudgetSetupModal'
 import CategoryBreakdown from './CategoryBreakdown'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
+
+const TABS = [
+  { id: 'home',       icon: '🏠', label: 'Home' },
+  { id: 'budget',     icon: '🎯', label: 'Budget' },
+  { id: 'add',        icon: '+',  label: 'Add',   fab: true },
+  { id: 'history',    icon: '🧾', label: 'History' },
+  { id: 'settings',   icon: '⚙️', label: 'Settings' },
+]
 
 export default function Dashboard({ user }) {
   const [month, setMonth] = useState(monthKey())
@@ -17,623 +25,537 @@ export default function Dashboard({ user }) {
   const [allocations, setAllocations] = useState(DEFAULT_ALLOCATIONS)
   const [expenses, setExpenses] = useState([])
   const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState('home')
   const [showAdd, setShowAdd] = useState(false)
   const [showBudget, setShowBudget] = useState(false)
-  const [breakdown, setBreakdown] = useState(null) // categoryId
+  const [breakdown, setBreakdown] = useState(null)
   const [editExpense, setEditExpense] = useState(null)
-
-  const isCurrentMonth = month === monthKey()
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      // Load month config
-      const mDoc = await getDoc(doc(db, 'users', user.uid, 'months', month))
+      const mDoc = await getDoc(doc(db, 'household', HOUSEHOLD, 'months', month))
       if (mDoc.exists()) {
-        const data = mDoc.data()
-        setSalary(data.salary || 0)
-        setAllocations({ ...DEFAULT_ALLOCATIONS, ...data.allocations })
+        const d = mDoc.data()
+        setSalary(d.salary || 0)
+        setAllocations({ ...DEFAULT_ALLOCATIONS, ...d.allocations })
       } else {
-        setSalary(0)
-        setAllocations(DEFAULT_ALLOCATIONS)
+        setSalary(0); setAllocations(DEFAULT_ALLOCATIONS)
       }
-
-      // Load expenses
-      const q = query(
-        collection(db, 'users', user.uid, 'expenses'),
-        where('month', '==', month)
-      )
+      const q = query(collection(db, 'household', HOUSEHOLD, 'expenses'), where('month', '==', month))
       const snap = await getDocs(q)
       setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
-    }
-  }, [month, user.uid])
+    } catch (e) { console.error(e) }
+    finally { setLoading(false) }
+  }, [month])
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Totals
-  const spentByCategory = {}
-  CATEGORIES.forEach(c => { spentByCategory[c.id] = 0 })
-  expenses.forEach(e => {
-    if (spentByCategory[e.category] !== undefined) spentByCategory[e.category] += e.amount
-    else spentByCategory[e.category] = e.amount
-  })
+  // Computed
+  const spentBy = {}
+  CATEGORIES.forEach(c => { spentBy[c.id] = 0 })
+  expenses.forEach(e => { spentBy[e.category] = (spentBy[e.category] || 0) + e.amount })
 
-  const totalSpent = Object.values(spentByCategory).reduce((s, v) => s + v, 0)
-  const totalBudgeted = CATEGORIES.reduce((s, c) => s + (salary * (allocations[c.id] || 0) / 100), 0)
-  const savingsTarget = salary * (allocations.savings || 0) / 100
+  const totalSpent = expenses.reduce((s, e) => s + e.amount, 0)
   const netSaved = salary - totalSpent
+  const savingsTarget = salary * (allocations.savings || 0) / 100
 
-  // Pie chart data (non-zero categories)
-  const pieData = CATEGORIES
-    .filter(c => spentByCategory[c.id] > 0)
-    .map(c => ({ name: c.label, value: spentByCategory[c.id], color: c.color }))
+  const pieData = CATEGORIES.filter(c => spentBy[c.id] > 0)
+    .map(c => ({ name: c.label, value: spentBy[c.id], color: c.color }))
 
-  const handleLogout = () => signOut(auth)
+  const sortedExpenses = [...expenses].sort((a, b) => (b.date?.seconds || 0) - (a.date?.seconds || 0))
 
-  const recentExpenses = [...expenses]
-    .sort((a, b) => {
-      const ta = a.date?.seconds || 0
-      const tb = b.date?.seconds || 0
-      return tb - ta
-    })
-    .slice(0, 6)
+  const openEdit = (exp) => { setEditExpense(exp); setShowAdd(true) }
 
-  const formatDate = (ts) => {
-    try {
-      const d = ts?.seconds ? new Date(ts.seconds * 1000) : new Date(ts)
-      return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-    } catch { return '' }
+  const handleTabPress = (t) => {
+    if (t.id === 'add') { setShowAdd(true); return }
+    setTab(t.id)
   }
 
   return (
-    <div style={styles.root}>
-      {/* ─── Sidebar ─────────────────────────── */}
-      <aside style={styles.sidebar}>
-        <div style={styles.brand}>
-          <span style={styles.brandIcon}>₹</span>
-          <span style={styles.brandName}>paisa</span>
-        </div>
-
-        <nav style={styles.nav}>
-          <div style={styles.navItem} className="nav-item active">
-            <span>📊</span><span>Dashboard</span>
+    <div style={s.root}>
+      {/* ── Header ── */}
+      <header style={s.header}>
+        <div>
+          <div style={s.brand}>
+            <span style={s.brandIcon}>₹</span>
+            <span style={s.brandName}>paisa</span>
           </div>
-        </nav>
-
-        <div style={{ flex: 1 }} />
-
-        {/* User info */}
-        <div style={styles.userBox}>
-          <div style={styles.avatar}>{user.email[0].toUpperCase()}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {user.email}
-            </div>
-            <button
-              onClick={handleLogout}
-              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '0.72rem', cursor: 'pointer', padding: 0, marginTop: 2 }}
-            >
-              Sign out →
-            </button>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+            {user.email.split('@')[0]} · shared
           </div>
         </div>
-      </aside>
-
-      {/* ─── Main ────────────────────────────── */}
-      <main style={styles.main}>
-        {/* Top bar */}
-        <div style={styles.topbar}>
-          <div>
-            <h1 style={styles.pageTitle}>Overview</h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 2 }}>
-              {salary > 0 ? `Salary: ${fmt(salary)}` : 'Set up your budget to get started'}
-            </p>
-          </div>
-
-          {/* Month nav */}
-          <div style={styles.monthNav}>
-            <button className="btn-icon" style={styles.monthBtn} onClick={() => setMonth(prevMonth(month))}>‹</button>
-            <span style={styles.monthLabel}>{monthLabel(month)}</span>
-            <button
-              className="btn-icon"
-              style={{ ...styles.monthBtn, opacity: isCurrentMonth ? 0.3 : 1 }}
-              onClick={() => !isCurrentMonth && setMonth(nextMonth(month))}
-              disabled={isCurrentMonth}
-            >›</button>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-ghost" onClick={() => setShowBudget(true)} style={{ fontSize: '0.82rem', padding: '8px 14px' }}>
-              ⚙️ Budget
-            </button>
-            <button className="btn-primary" onClick={() => setShowAdd(true)} style={{ fontSize: '0.82rem', padding: '8px 16px' }}>
-              + Add Expense
-            </button>
-          </div>
+        {/* Month picker */}
+        <div style={s.monthPicker}>
+          <button style={s.monthBtn} onClick={() => setMonth(prevMonth(month))}>‹</button>
+          <span style={s.monthText}>{monthLabel(month)}</span>
+          <button style={s.monthBtn} onClick={() => setMonth(nextMonth(month))}>›</button>
         </div>
+      </header>
 
+      {/* ── Content ── */}
+      <main style={s.main}>
         {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 80 }}>
             <div className="loader-ring spin" />
           </div>
         ) : (
           <>
-            {/* ─── Summary cards ─── */}
-            <div style={styles.summaryRow}>
-              <SummaryCard
-                label="Total Income"
-                value={fmt(salary)}
-                sub="this month"
-                accent="var(--green)"
-                icon="💼"
-              />
-              <SummaryCard
-                label="Total Spent"
-                value={fmt(totalSpent)}
-                sub={salary > 0 ? `${Math.round(pct(totalSpent, salary))}% of salary` : ''}
-                accent={statusColor(totalSpent, salary)}
-                icon="💸"
-              />
-              <SummaryCard
-                label="Net Savings"
-                value={fmt(netSaved)}
-                sub={savingsTarget > 0 ? `Target: ${fmt(savingsTarget)}` : ''}
-                accent={netSaved >= 0 ? 'var(--green)' : 'var(--rose)'}
-                icon="🏦"
-              />
-              <SummaryCard
-                label="Budgeted"
-                value={fmt(totalBudgeted)}
-                sub={`${fmt(salary - totalBudgeted)} unallocated`}
-                accent="var(--blue)"
-                icon="🎯"
-              />
-            </div>
+            {tab === 'home' && <HomeTab salary={salary} totalSpent={totalSpent} netSaved={netSaved}
+              savingsTarget={savingsTarget} pieData={pieData} sortedExpenses={sortedExpenses}
+              spentBy={spentBy} allocations={allocations} setBreakdown={setBreakdown}
+              setShowAdd={setShowAdd} setShowBudget={setShowBudget} />}
 
-            {/* ─── Categories grid ─── */}
-            <div style={styles.section}>
-              <div style={styles.sectionTitle}>Budget Tracker</div>
-              {salary === 0 && (
-                <div style={styles.banner}>
-                  <span>📋</span>
-                  <span>Set your salary & budget allocations to track spending.</span>
-                  <button className="btn-primary" style={{ fontSize: '0.8rem', padding: '6px 14px', flexShrink: 0 }} onClick={() => setShowBudget(true)}>
-                    Set Up Now
-                  </button>
-                </div>
-              )}
-              <div style={styles.catGrid}>
-                {CATEGORIES.map(cat => {
-                  const spent = spentByCategory[cat.id] || 0
-                  const budget = salary * (allocations[cat.id] || 0) / 100
-                  const used = pct(spent, budget)
-                  const color = statusColor(spent, budget)
-                  const overBudget = budget > 0 && spent > budget
+            {tab === 'budget' && <BudgetTab salary={salary} spentBy={spentBy} allocations={allocations}
+              setBreakdown={setBreakdown} setShowBudget={setShowBudget} />}
 
-                  return (
-                    <div
-                      key={cat.id}
-                      style={{ ...styles.catCard, cursor: 'pointer' }}
-                      onClick={() => setBreakdown(cat.id)}
-                      onMouseEnter={e => e.currentTarget.style.borderColor = `${cat.color}40`}
-                      onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                    >
-                      <div style={styles.catHeader}>
-                        <div style={{ ...styles.catIcon, background: `${cat.color}15` }}>
-                          {cat.icon}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text)' }}>{cat.label}</div>
-                          {budget > 0 && (
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>
-                              {allocations[cat.id]}% · {fmt(budget)}
-                            </div>
-                          )}
-                        </div>
-                        {overBudget && <span className="chip chip-rose" style={{ fontSize: '0.65rem', padding: '2px 7px' }}>Over</span>}
-                      </div>
+            {tab === 'history' && <HistoryTab expenses={sortedExpenses} onEdit={openEdit} />}
 
-                      <div style={{ marginTop: 12 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, alignItems: 'baseline' }}>
-                          <span className="amount" style={{ fontSize: '1rem', fontWeight: 600, color }}>
-                            {fmt(spent)}
-                          </span>
-                          {budget > 0 && (
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                              / {fmt(budget)}
-                            </span>
-                          )}
-                        </div>
-                        <div className="progress-track">
-                          <div
-                            className="progress-fill"
-                            style={{
-                              width: `${budget > 0 ? Math.min((spent / budget) * 100, 100) : 0}%`,
-                              background: color,
-                            }}
-                          />
-                        </div>
-                        {budget > 0 && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5, fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                            <span>{Math.round(used)}% used</span>
-                            <span style={{ color: overBudget ? 'var(--rose)' : 'inherit' }}>
-                              {overBudget ? `▲ ${fmt(spent - budget)} over` : `${fmt(budget - spent)} left`}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* ─── Bottom row: chart + recent ─── */}
-            <div style={styles.bottomRow}>
-              {/* Pie chart */}
-              <div className="card" style={{ flex: '0 0 300px' }}>
-                <div style={styles.sectionTitle}>Spending Split</div>
-                {pieData.length === 0 ? (
-                  <div className="empty">
-                    <div className="empty-icon">📊</div>
-                    <p>No expenses yet this month</p>
-                  </div>
-                ) : (
-                  <>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={55}
-                          outerRadius={85}
-                          paddingAngle={2}
-                          dataKey="value"
-                        >
-                          {pieData.map((entry, i) => (
-                            <Cell key={i} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{ background: '#0e1525', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, fontSize: '0.8rem' }}
-                          formatter={(v) => [fmt(v), '']}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-                      {pieData.slice(0, 5).map((d, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem' }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: d.color, flexShrink: 0 }} />
-                          <span style={{ flex: 1, color: 'var(--text-muted)' }}>{d.name}</span>
-                          <span className="amount" style={{ color: 'var(--text)' }}>{fmt(d.value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Recent expenses */}
-              <div className="card" style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <div style={styles.sectionTitle}>Recent Transactions</div>
-                  <button className="btn-ghost" style={{ fontSize: '0.78rem', padding: '5px 12px' }} onClick={() => setShowAdd(true)}>
-                    + Add
-                  </button>
-                </div>
-                {recentExpenses.length === 0 ? (
-                  <div className="empty">
-                    <div className="empty-icon">🧾</div>
-                    <p>No transactions this month</p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {recentExpenses.map(exp => {
-                      const cat = getCat(exp.category)
-                      return (
-                        <div
-                          key={exp.id}
-                          style={styles.txRow}
-                          onClick={() => setBreakdown(exp.category)}
-                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
-                        >
-                          <div style={{ ...styles.txIcon, background: `${cat.color}15` }}>{cat.icon}</div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: '0.875rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {exp.note}
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 1 }}>
-                              {cat.label} · {formatDate(exp.date)}
-                            </div>
-                          </div>
-                          <span className="amount" style={{ fontWeight: 600, color: cat.color, flexShrink: 0 }}>
-                            -{fmt(exp.amount)}
-                          </span>
-                        </div>
-                      )
-                    })}
-                    {expenses.length > 6 && (
-                      <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                        +{expenses.length - 6} more · click a category for full list
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+            {tab === 'settings' && <SettingsTab user={user} salary={salary} month={month}
+              setShowBudget={setShowBudget} />}
           </>
         )}
+        {/* bottom nav spacer */}
+        <div style={{ height: 'calc(var(--nav-h) + var(--safe-bottom) + 16px)' }} />
       </main>
 
-      {/* ─── Modals ─── */}
+      {/* ── Bottom Nav ── */}
+      <nav style={s.nav}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => handleTabPress(t)}
+            style={t.fab ? s.fab : { ...s.navBtn, color: tab === t.id ? 'var(--green)' : 'var(--text-muted)' }}>
+            {t.fab
+              ? <span style={s.fabIcon}>+</span>
+              : <>
+                  <span style={{ fontSize: '1.2rem', lineHeight: 1 }}>{t.icon}</span>
+                  <span style={{ fontSize: '0.6rem', fontWeight: 600, letterSpacing: '0.03em', marginTop: 2 }}>{t.label}</span>
+                  {tab === t.id && <span style={s.activeDot} />}
+                </>
+            }
+          </button>
+        ))}
+      </nav>
+
+      {/* ── Modals ── */}
       {showAdd && (
-        <AddExpenseModal
-          userId={user.uid}
-          month={month}
-          onClose={() => { setShowAdd(false); setEditExpense(null) }}
-          onSaved={loadData}
-          editExpense={editExpense}
-        />
+        <AddExpenseModal month={month} onClose={() => { setShowAdd(false); setEditExpense(null) }}
+          onSaved={loadData} editExpense={editExpense} />
       )}
       {showBudget && (
-        <BudgetSetupModal
-          userId={user.uid}
-          month={month}
-          salary={salary}
-          allocations={allocations}
+        <BudgetSetupModal month={month} salary={salary} allocations={allocations}
           onClose={() => setShowBudget(false)}
-          onSaved={({ salary: s, allocations: a }) => { setSalary(s); setAllocations(a) }}
-        />
+          onSaved={({ salary: sl, allocations: al }) => { setSalary(sl); setAllocations(al) }} />
       )}
       {breakdown && (
-        <CategoryBreakdown
-          userId={user.uid}
-          categoryId={breakdown}
-          expenses={expenses}
+        <CategoryBreakdown categoryId={breakdown} expenses={expenses}
           budget={salary * (allocations[breakdown] || 0) / 100}
-          onClose={() => setBreakdown(null)}
-          onEdit={(exp) => { setEditExpense(exp); setShowAdd(true) }}
-          onRefresh={loadData}
-        />
+          onClose={() => setBreakdown(null)} onEdit={openEdit} onRefresh={loadData} />
       )}
     </div>
   )
 }
 
-function SummaryCard({ label, value, sub, accent, icon }) {
+// ─── Home Tab ────────────────────────────────────────────────────────────────
+function HomeTab({ salary, totalSpent, netSaved, savingsTarget, pieData, sortedExpenses, spentBy, allocations, setBreakdown, setShowAdd, setShowBudget }) {
+  const overBudgetCats = CATEGORIES.filter(c => {
+    const b = salary * (allocations[c.id] || 0) / 100
+    return b > 0 && spentBy[c.id] > b
+  })
+
   return (
-    <div className="card" style={{ flex: 1, minWidth: 160, position: 'relative', overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: -10, right: -10, fontSize: '3rem', opacity: 0.07, pointerEvents: 'none' }}>
-        {icon}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Setup banner */}
+      {salary === 0 && (
+        <div style={s.banner} onClick={() => setShowBudget(true)}>
+          <span>📋</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>Set up your budget</div>
+            <div style={{ fontSize: '0.75rem', marginTop: 2, opacity: 0.8 }}>Tap to add salary & allocations</div>
+          </div>
+          <span>›</span>
+        </div>
+      )}
+
+      {/* Alert for over-budget */}
+      {overBudgetCats.length > 0 && (
+        <div style={s.alertBanner}>
+          <span>⚠️</span>
+          <span style={{ fontSize: '0.82rem' }}>Over budget: {overBudgetCats.map(c => c.label).join(', ')}</span>
+        </div>
+      )}
+
+      {/* Summary cards 2x2 */}
+      <div style={s.grid2}>
+        <SumCard label="Income" value={fmt(salary)} icon="💼" color="var(--green)" />
+        <SumCard label="Spent" value={fmt(totalSpent)}
+          icon="💸" color={statusColor(totalSpent, salary)}
+          sub={salary > 0 ? `${Math.round(pct(totalSpent, salary))}% used` : ''} />
+        <SumCard label="Saved" value={fmt(netSaved)} icon="🏦"
+          color={netSaved >= 0 ? 'var(--green)' : 'var(--rose)'}
+          sub={savingsTarget > 0 ? `Target ${fmt(savingsTarget)}` : ''} />
+        <SumCard label="Remaining" value={fmt(Math.max(salary - totalSpent, 0))} icon="🎯" color="var(--blue)" />
       </div>
-      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-        {label}
+
+      {/* Quick top categories */}
+      <div className="card">
+        <div style={s.cardTitle}>Top Spending</div>
+        {pieData.length === 0 ? (
+          <div className="empty" style={{ padding: '20px 0' }}>
+            <div className="empty-icon">📊</div>
+            <p>No expenses yet</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+            {pieData.slice(0, 5).map((d, i) => {
+              const cat = CATEGORIES.find(c => c.label === d.name)
+              const budget = salary * (allocations[cat?.id] || 0) / 100
+              return (
+                <div key={i} style={s.topCatRow} onClick={() => cat && setBreakdown(cat.id)}>
+                  <span style={{ fontSize: '1.1rem', width: 24, textAlign: 'center' }}>{cat?.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '0.82rem' }}>
+                      <span style={{ fontWeight: 500 }}>{d.name}</span>
+                      <span className="amount" style={{ fontWeight: 600, color: d.color }}>{fmt(d.value)}</span>
+                    </div>
+                    <div className="progress-track">
+                      <div className="progress-fill" style={{
+                        width: `${budget > 0 ? Math.min((d.value / budget) * 100, 100) : 20}%`,
+                        background: d.color,
+                      }} />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
-      <div className="amount" style={{ fontSize: '1.35rem', fontWeight: 500, color: accent, lineHeight: 1.2 }}>
-        {value}
+
+      {/* Pie chart */}
+      {pieData.length > 1 && (
+        <div className="card">
+          <div style={s.cardTitle}>Spending Split</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <PieChart>
+              <Pie data={pieData} cx="50%" cy="50%" innerRadius={48} outerRadius={78} paddingAngle={2} dataKey="value">
+                {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+              </Pie>
+              <Tooltip
+                contentStyle={{ background: '#0e1525', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, fontSize: '0.8rem' }}
+                formatter={v => [fmt(v), '']} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Recent */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={s.cardTitle}>Recent</div>
+          <button onClick={() => setShowAdd(true)} style={{ background: 'var(--green-dim)', border: '1px solid rgba(16,185,129,0.2)', color: 'var(--green)', borderRadius: 6, padding: '5px 12px', fontSize: '0.8rem', fontWeight: 600 }}>
+            + Add
+          </button>
+        </div>
+        {sortedExpenses.length === 0 ? (
+          <div className="empty" style={{ padding: '20px 0' }}><p>No transactions yet</p></div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {sortedExpenses.slice(0, 5).map(exp => {
+              const cat = getCat(exp.category)
+              return (
+                <div key={exp.id} style={s.txRow} onClick={() => setBreakdown(exp.category)}>
+                  <span style={{ ...s.txIcon, background: `${cat.color}15` }}>{cat.icon}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.875rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp.note}</div>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 1 }}>{cat.label} · {formatDate(exp.date)}</div>
+                  </div>
+                  <span className="amount" style={{ fontWeight: 600, color: cat.color, flexShrink: 0 }}>-{fmt(exp.amount)}</span>
+                </div>
+              )
+            })}
+            {sortedExpenses.length > 5 && (
+              <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', paddingTop: 4 }}>
+                +{sortedExpenses.length - 5} more in History tab
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      {sub && (
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 5 }}>{sub}</div>
+    </div>
+  )
+}
+
+// ─── Budget Tab ──────────────────────────────────────────────────────────────
+function BudgetTab({ salary, spentBy, allocations, setBreakdown, setShowBudget }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          All Categories
+        </div>
+        <button onClick={() => setShowBudget(true)}
+          style={{ background: 'var(--green-dim)', border: '1px solid rgba(16,185,129,0.2)', color: 'var(--green)', borderRadius: 6, padding: '5px 12px', fontSize: '0.8rem', fontWeight: 600 }}>
+          ⚙️ Edit
+        </button>
+      </div>
+      {CATEGORIES.map(cat => {
+        const spent = spentBy[cat.id] || 0
+        const budget = salary * (allocations[cat.id] || 0) / 100
+        const color = statusColor(spent, budget)
+        const over = budget > 0 && spent > budget
+        return (
+          <div key={cat.id} style={s.budgetRow} onClick={() => setBreakdown(cat.id)}>
+            <div style={{ ...s.txIcon, background: `${cat.color}15`, fontSize: '1.1rem' }}>{cat.icon}</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>{cat.label}</span>
+                  {over && <span className="chip chip-rose" style={{ marginLeft: 6, fontSize: '0.6rem', padding: '1px 6px' }}>Over</span>}
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span className="amount" style={{ fontSize: '0.875rem', fontWeight: 600, color }}>{fmt(spent)}</span>
+                  {budget > 0 && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}> / {fmt(budget)}</span>}
+                </div>
+              </div>
+              <div className="progress-track">
+                <div className="progress-fill" style={{ width: `${budget > 0 ? Math.min((spent / budget) * 100, 100) : 0}%`, background: color }} />
+              </div>
+              {budget > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  <span>{allocations[cat.id] || 0}% of salary</span>
+                  <span style={{ color: over ? 'var(--rose)' : 'var(--text-muted)' }}>
+                    {over ? `▲ ${fmt(spent - budget)} over` : `${fmt(budget - spent)} left`}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── History Tab ─────────────────────────────────────────────────────────────
+function HistoryTab({ expenses, onEdit }) {
+  const [filter, setFilter] = useState('all')
+  const filtered = filter === 'all' ? expenses : expenses.filter(e => e.category === filter)
+
+  // Group by date
+  const grouped = filtered.reduce((acc, e) => {
+    const key = formatDate(e.date)
+    if (!acc[key]) acc[key] = []
+    acc[key].push(e)
+    return acc
+  }, {})
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Category filter */}
+      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+        <button
+          onClick={() => setFilter('all')}
+          style={{ ...s.filterChip, ...(filter === 'all' ? s.filterChipActive : {}) }}
+        >All</button>
+        {CATEGORIES.filter(c => expenses.some(e => e.category === c.id)).map(c => (
+          <button key={c.id} onClick={() => setFilter(c.id)}
+            style={{ ...s.filterChip, ...(filter === c.id ? { ...s.filterChipActive, borderColor: c.color, color: c.color, background: `${c.color}15` } : {}) }}>
+            {c.icon} {c.label}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="empty"><div className="empty-icon">🧾</div><p>No transactions</p></div>
+      ) : (
+        Object.entries(grouped).map(([date, exps]) => (
+          <div key={date}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, paddingLeft: 4 }}>
+              {date} · {fmt(exps.reduce((s, e) => s + e.amount, 0))}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {exps.map(exp => {
+                const cat = getCat(exp.category)
+                return (
+                  <div key={exp.id} style={s.txRow} onClick={() => onEdit(exp)}>
+                    <span style={{ ...s.txIcon, background: `${cat.color}15` }}>{cat.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.875rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exp.note}</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 1 }}>{cat.label}</div>
+                    </div>
+                    <span className="amount" style={{ fontWeight: 600, color: cat.color, flexShrink: 0 }}>-{fmt(exp.amount)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        ))
       )}
     </div>
   )
 }
 
-const styles = {
-  root: {
-    display: 'flex',
-    minHeight: '100vh',
-    background: 'var(--bg)',
-  },
-  sidebar: {
-    width: 220,
+// ─── Settings Tab ────────────────────────────────────────────────────────────
+function SettingsTab({ user, salary, month, setShowBudget }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--green)', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.1rem', flexShrink: 0 }}>
+          {user.email[0].toUpperCase()}
+        </div>
+        <div>
+          <div style={{ fontWeight: 600 }}>{user.email}</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>Shared household account</div>
+        </div>
+      </div>
+
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+        <div style={s.settingRow} onClick={() => setShowBudget(true)}>
+          <span style={{ fontSize: '1.2rem' }}>⚙️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500 }}>Budget Setup</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              {salary > 0 ? `Salary: ${fmt(salary)}` : 'Not set yet'}
+            </div>
+          </div>
+          <span style={{ color: 'var(--text-muted)' }}>›</span>
+        </div>
+        <div style={{ height: 1, background: 'var(--border)' }} />
+        <div style={s.settingRow}>
+          <span style={{ fontSize: '1.2rem' }}>📅</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500 }}>Current Month</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{monthLabel(month)}</div>
+          </div>
+        </div>
+        <div style={{ height: 1, background: 'var(--border)' }} />
+        <div style={s.settingRow}>
+          <span style={{ fontSize: '1.2rem' }}>🔗</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 500 }}>Shared Data</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--green)' }}>Both accounts see the same data</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ background: 'var(--rose-dim)', border: '1px solid rgba(244,63,94,0.15)' }}>
+        <button
+          onClick={() => signOut(auth)}
+          style={{ background: 'none', border: 'none', color: 'var(--rose)', fontWeight: 600, fontSize: '0.9rem', width: '100%', textAlign: 'left', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+        >
+          <span style={{ fontSize: '1.2rem' }}>🚪</span> Sign Out
+        </button>
+      </div>
+
+      <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.72rem', marginTop: 8 }}>
+        paisa v2.0 · built with ❤️
+      </div>
+    </div>
+  )
+}
+
+// ─── Small components ────────────────────────────────────────────────────────
+function SumCard({ label, value, icon, color, sub }) {
+  return (
+    <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: -4, right: 4, fontSize: '2rem', opacity: 0.08 }}>{icon}</div>
+      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>{label}</div>
+      <div className="amount" style={{ fontSize: '1.1rem', fontWeight: 600, color, lineHeight: 1.2 }}>{value}</div>
+      {sub && <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: 4 }}>{sub}</div>}
+    </div>
+  )
+}
+
+// ─── Styles ──────────────────────────────────────────────────────────────────
+const s = {
+  root: { display: 'flex', flexDirection: 'column', minHeight: '100dvh', background: 'var(--bg)' },
+  header: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    padding: '14px 16px 12px',
     background: 'var(--bg-card)',
-    borderRight: '1px solid var(--border)',
-    display: 'flex',
-    flexDirection: 'column',
-    padding: '24px 16px',
-    position: 'sticky',
-    top: 0,
-    height: '100vh',
-    flexShrink: 0,
+    borderBottom: '1px solid var(--border)',
+    position: 'sticky', top: 0, zIndex: 100,
+    paddingTop: 'max(14px, calc(env(safe-area-inset-top) + 8px))',
   },
-  brand: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 32,
-    paddingLeft: 4,
-  },
+  brand: { display: 'flex', alignItems: 'center', gap: 8 },
   brandIcon: {
-    width: 32, height: 32,
-    background: 'var(--green)',
-    color: '#000',
-    borderRadius: 8,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontFamily: 'var(--font-mono)',
-    fontWeight: 700,
-    fontSize: '1rem',
-    lineHeight: '32px',
-    textAlign: 'center',
-    flexShrink: 0,
+    width: 30, height: 30, background: 'var(--green)', color: '#000',
+    borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.9rem',
+    lineHeight: '30px', textAlign: 'center', flexShrink: 0,
   },
-  brandName: {
-    fontFamily: 'var(--font-mono)',
-    fontWeight: 700,
-    fontSize: '1.2rem',
-    color: 'var(--text)',
-    letterSpacing: '-0.03em',
-  },
-  nav: { display: 'flex', flexDirection: 'column', gap: 4 },
-  navItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '9px 12px',
-    borderRadius: 8,
-    fontSize: '0.875rem',
-    fontWeight: 500,
-    color: 'var(--text)',
-    background: 'var(--green-dim)',
-    border: '1px solid rgba(16,185,129,0.1)',
-  },
-  userBox: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '12px',
-    background: 'rgba(255,255,255,0.03)',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid var(--border)',
-  },
-  avatar: {
-    width: 32, height: 32,
-    background: 'var(--green)',
-    color: '#000',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: 700,
-    fontSize: '0.875rem',
-    flexShrink: 0,
-    lineHeight: '32px',
-    textAlign: 'center',
-  },
-  main: {
-    flex: 1,
-    padding: '28px 32px',
-    overflow: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 28,
-  },
-  topbar: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 16,
-    flexWrap: 'wrap',
-  },
-  pageTitle: {
-    fontSize: '1.4rem',
-    fontWeight: 700,
-    letterSpacing: '-0.02em',
-  },
-  monthNav: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
+  brandName: { fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '1.1rem', letterSpacing: '-0.03em' },
+  monthPicker: { display: 'flex', alignItems: 'center', gap: 4, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 6px' },
+  monthBtn: { background: 'none', border: 'none', color: 'var(--text)', fontSize: '1.1rem', cursor: 'pointer', padding: '2px 6px', borderRadius: 4, lineHeight: 1 },
+  monthText: { fontSize: '0.78rem', fontWeight: 600, minWidth: 110, textAlign: 'center' },
+  main: { flex: 1, padding: '16px', overflowY: 'auto' },
+  nav: {
+    position: 'fixed', bottom: 0, left: 0, right: 0,
+    height: 'calc(var(--nav-h) + var(--safe-bottom))',
+    paddingBottom: 'var(--safe-bottom)',
     background: 'var(--bg-card)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-sm)',
-    padding: '4px',
-    marginLeft: 'auto',
+    borderTop: '1px solid var(--border)',
+    display: 'flex', alignItems: 'center',
+    zIndex: 200,
   },
-  monthBtn: {
-    width: 28, height: 28,
-    background: 'transparent',
-    border: 'none',
-    color: 'var(--text)',
-    fontSize: '1.2rem',
-    cursor: 'pointer',
-    borderRadius: 6,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
+  navBtn: {
+    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+    justifyContent: 'center', gap: 0, background: 'none', border: 'none',
+    cursor: 'pointer', padding: '8px 0', position: 'relative', minHeight: 52,
   },
-  monthLabel: {
-    fontSize: '0.82rem',
-    fontWeight: 600,
-    padding: '0 8px',
-    color: 'var(--text)',
-    minWidth: 130,
-    textAlign: 'center',
+  activeDot: {
+    position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)',
+    width: 4, height: 4, borderRadius: '50%', background: 'var(--green)',
   },
-  summaryRow: {
-    display: 'flex',
-    gap: 16,
-    flexWrap: 'wrap',
+  fab: {
+    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0',
   },
-  section: { display: 'flex', flexDirection: 'column', gap: 16 },
-  sectionTitle: {
-    fontSize: '0.78rem',
-    fontWeight: 600,
-    color: 'var(--text-muted)',
-    textTransform: 'uppercase',
-    letterSpacing: '0.08em',
-    marginBottom: 4,
+  fabIcon: {
+    width: 48, height: 48, borderRadius: '50%',
+    background: 'var(--green)', color: '#000',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '1.8rem', fontWeight: 300, lineHeight: 1,
+    boxShadow: '0 0 20px rgba(16,185,129,0.35)',
+    marginBottom: 6,
   },
+  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 },
   banner: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '12px 16px',
-    background: 'var(--amber-dim)',
-    border: '1px solid rgba(245,158,11,0.2)',
-    borderRadius: 'var(--radius-sm)',
-    fontSize: '0.82rem',
-    color: 'var(--amber)',
-    flexWrap: 'wrap',
+    display: 'flex', alignItems: 'center', gap: 12,
+    padding: '14px 16px', background: 'var(--amber-dim)',
+    border: '1px solid rgba(245,158,11,0.25)', borderRadius: 'var(--radius)',
+    color: 'var(--amber)', cursor: 'pointer',
   },
-  catGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-    gap: 12,
+  alertBanner: {
+    display: 'flex', alignItems: 'center', gap: 10,
+    padding: '12px 14px', background: 'var(--rose-dim)',
+    border: '1px solid rgba(244,63,94,0.2)', borderRadius: 'var(--radius-sm)',
+    color: 'var(--rose)',
   },
-  catCard: {
-    background: 'var(--bg-card)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius)',
-    padding: '16px',
-    transition: 'all 0.2s ease',
-  },
-  catHeader: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  catIcon: {
-    width: 34, height: 34,
-    borderRadius: 8,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '1rem',
-    flexShrink: 0,
-  },
-  bottomRow: {
-    display: 'flex',
-    gap: 16,
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
-    paddingBottom: 32,
-  },
+  cardTitle: { fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 },
+  topCatRow: { display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' },
   txRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '10px 12px',
-    background: 'rgba(255,255,255,0.02)',
-    borderRadius: 'var(--radius-sm)',
-    border: '1px solid var(--border)',
+    display: 'flex', alignItems: 'center', gap: 12,
+    padding: '10px 12px', background: 'rgba(255,255,255,0.02)',
+    borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
     cursor: 'pointer',
-    transition: 'background 0.15s ease',
   },
-  txIcon: {
-    width: 32, height: 32,
-    borderRadius: 8,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '1rem',
-    flexShrink: 0,
+  txIcon: { width: 34, height: 34, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0 },
+  budgetRow: {
+    display: 'flex', alignItems: 'center', gap: 12,
+    padding: '12px 14px', background: 'var(--bg-card)',
+    border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+    cursor: 'pointer',
   },
+  filterChip: {
+    flexShrink: 0, padding: '6px 12px', borderRadius: 99,
+    background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)',
+    color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 500, cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
+  filterChipActive: {
+    background: 'var(--green-dim)', border: '1px solid rgba(16,185,129,0.3)',
+    color: 'var(--green)',
+  },
+  settingRow: { display: 'flex', alignItems: 'center', gap: 14, padding: '14px 4px', cursor: 'pointer' },
 }
