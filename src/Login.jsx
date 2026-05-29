@@ -7,6 +7,7 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [rememberMe, setRememberMe] = useState(true)
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -58,6 +59,17 @@ export default function Login() {
               placeholder="••••••••"
               required
             />
+          </div>
+
+          <div style={styles.checkboxField}>
+            <input
+              type="checkbox"
+              id="rememberMe"
+              checked={rememberMe}
+              onChange={e => setRememberMe(e.target.checked)}
+              style={styles.checkbox}
+            />
+            <label htmlFor="rememberMe" style={styles.checkboxLabel}>Keep me logged in</label>
           </div>
 
           {error && <div style={styles.error}>{error}</div>}
@@ -162,5 +174,22 @@ const styles = {
     fontSize: '0.75rem',
     textAlign: 'center',
     lineHeight: 1.5,
+  },
+  checkboxField: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  checkbox: {
+    width: '18px',
+    height: '18px',
+    cursor: 'pointer',
+    accentColor: 'var(--green)',
+  },
+  checkboxLabel: {
+    fontSize: '0.875rem',
+    color: 'var(--text-muted)',
+    cursor: 'pointer',
+    userSelect: 'none',
   },
 }
