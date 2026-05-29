@@ -474,4 +474,3 @@ const s = {
   filterChip: { flexShrink: 0, padding: '6px 12px', borderRadius: 99, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '0.78rem', fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' },
   filterActive: { background: 'var(--green-dim)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--green)' },
 }
- 
