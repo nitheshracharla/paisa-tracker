@@ -1,5 +1,5 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+ 
 :root {
   --bg: #080d17;
   --bg-card: #0e1525;
@@ -27,9 +27,9 @@
   --nav-h: 72px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
-
+ 
 html { scroll-behavior: smooth; }
-
+ 
 body {
   font-family: var(--font-ui);
   background: var(--bg);
@@ -40,11 +40,11 @@ body {
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
 }
-
+ 
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #1e2d45; border-radius: 3px; }
-
+ 
 input, select, textarea {
   font-family: var(--font-ui);
   background: var(--bg);
@@ -65,7 +65,7 @@ input:focus, select:focus, textarea:focus {
 input[type="number"] { font-family: var(--font-mono); font-size: 1.1rem; }
 input[type="date"] { color-scheme: dark; }
 select option { background: #0e1525; }
-
+ 
 button {
   font-family: var(--font-ui);
   cursor: pointer;
@@ -105,14 +105,14 @@ button {
   min-height: 36px;
 }
 .btn-icon:active { background: var(--bg-card2); }
-
+ 
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
 }
-
+ 
 /* ── Full-screen modal on mobile ── */
 .modal-overlay {
   position: fixed;
@@ -163,7 +163,7 @@ button {
 }
 .modal-footer .btn-primary { flex: 1; text-align: center; }
 .modal-footer .btn-ghost { flex: 0 0 auto; }
-
+ 
 /* ── Form ── */
 .field { display: flex; flex-direction: column; gap: 8px; }
 .field label {
@@ -173,7 +173,7 @@ button {
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
-
+ 
 /* ── Progress bar ── */
 .progress-track {
   height: 6px;
@@ -186,7 +186,7 @@ button {
   border-radius: 99px;
   transition: width 0.5s cubic-bezier(0.34,1.2,0.64,1);
 }
-
+ 
 /* ── Chips ── */
 .chip {
   display: inline-flex;
@@ -199,13 +199,13 @@ button {
 .chip-green { background: var(--green-dim); color: var(--green); border: 1px solid rgba(16,185,129,0.2); }
 .chip-amber { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
 .chip-rose { background: var(--rose-dim); color: var(--rose); border: 1px solid rgba(244,63,94,0.2); }
-
+ 
 /* ── Animations ── */
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; display: inline-block; }
-
+ 
 /* ── Loader ── */
 .loader-screen {
   display: flex; flex-direction: column;
@@ -218,15 +218,15 @@ button {
   border-top-color: var(--green);
   border-radius: 50%;
 }
-
+ 
 /* ── Amount ── */
 .amount { font-family: var(--font-mono); }
-
+ 
 /* ── Empty ── */
 .empty { text-align: center; padding: 40px 20px; color: var(--text-muted); }
 .empty-icon { font-size: 2.5rem; margin-bottom: 12px; opacity: 0.4; }
 .empty p { font-size: 0.875rem; }
-
+ 
 /* ── Error box ── */
 .error-box {
   background: var(--rose-dim);
