@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { collection, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore'
 import { db } from './firebase'
 import { CATEGORIES, getCat, HOUSEHOLD } from './constants'
-
+ 
 export default function AddExpenseModal({ month, onClose, onSaved, editExpense }) {
   const editing = !!editExpense
   const [category, setCategory] = useState(editExpense?.category || 'food')
@@ -15,9 +15,9 @@ export default function AddExpenseModal({ month, onClose, onSaved, editExpense }
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-
+ 
   const cat = getCat(category)
-
+ 
   const handleSave = async () => {
     if (!amount || isNaN(amount) || Number(amount) <= 0) { setError('Enter a valid amount.'); return }
     if (!note.trim()) { setError('Add a note — e.g. Breakfast, Petrol fill-up'); return }
@@ -34,7 +34,7 @@ export default function AddExpenseModal({ month, onClose, onSaved, editExpense }
     } catch (e) { setError('Failed to save. Try again.') }
     finally { setLoading(false) }
   }
-
+ 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
@@ -45,7 +45,7 @@ export default function AddExpenseModal({ month, onClose, onSaved, editExpense }
           </div>
           <button className="btn-icon" onClick={onClose} style={{ fontSize: '1.1rem' }}>✕</button>
         </div>
-
+ 
         <div className="modal-body">
           {/* Amount — big and prominent */}
           <div className="field">
@@ -57,7 +57,7 @@ export default function AddExpenseModal({ month, onClose, onSaved, editExpense }
               style={{ fontSize: '2rem', padding: '14px', textAlign: 'center', letterSpacing: '-0.02em' }}
             />
           </div>
-
+ 
           {/* Category grid */}
           <div className="field">
             <label>Category</label>
@@ -79,7 +79,7 @@ export default function AddExpenseModal({ month, onClose, onSaved, editExpense }
               ))}
             </div>
           </div>
-
+ 
           {/* Note */}
           <div className="field">
             <label>Description</label>
@@ -89,16 +89,16 @@ export default function AddExpenseModal({ month, onClose, onSaved, editExpense }
               maxLength={80}
             />
           </div>
-
+ 
           {/* Date */}
           <div className="field">
             <label>Date</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)} />
           </div>
-
+ 
           {error && <div className="error-box">{error}</div>}
         </div>
-
+ 
         <div className="modal-footer">
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
           <button className="btn-primary" onClick={handleSave} disabled={loading}>
@@ -109,7 +109,7 @@ export default function AddExpenseModal({ month, onClose, onSaved, editExpense }
     </div>
   )
 }
-
+ 
 const styles = {
   catGrid: {
     display: 'grid',
@@ -124,3 +124,4 @@ const styles = {
     minHeight: 60,
   },
 }
+ 
